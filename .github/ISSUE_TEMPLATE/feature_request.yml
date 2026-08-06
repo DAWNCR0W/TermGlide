@@ -1,0 +1,41 @@
+name: Feature request
+description: Propose a focused improvement that fits TermGlide's product boundaries.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the smallest useful change and its expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Explain current workarounds or simpler alternatives you considered.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Scope and compatibility
+      description: Note affected platforms, CLI or configuration changes, dependencies, and risks.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and discussions for similar proposals.
+          required: true
+        - label: This proposal preserves TermGlide's Chrome-to-terminal product boundary.
+          required: true

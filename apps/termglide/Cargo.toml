@@ -1,0 +1,40 @@
+[package]
+name = "termglide"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A graphical web browser for the terminal, powered by isolated Chrome and CDP"
+readme = "../../README.md"
+keywords = ["browser", "terminal", "chromium", "tui"]
+categories = ["command-line-utilities"]
+publish = false
+
+[[bin]]
+name = "termglide"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+crossterm.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+unicode-width.workspace = true
+url.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tg-browser = { path = "../../crates/tg-browser" }
+tg-config = { path = "../../crates/tg-config" }
+tg-core = { path = "../../crates/tg-core" }
+tg-network = { path = "../../crates/tg-network" }
+tg-platform = { path = "../../crates/tg-platform" }
+tg-terminal = { path = "../../crates/tg-terminal" }
+tg-url = { path = "../../crates/tg-url" }
+
+[lints]
+workspace = true

@@ -1,0 +1,10 @@
+/target/
+/.cache/
+/.artifacts/
+/.serena/
+/coverage/
+/dist/
+*.profraw
+*.tgtrace
+*.tgs
+.DS_Store

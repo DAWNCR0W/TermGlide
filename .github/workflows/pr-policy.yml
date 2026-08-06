@@ -1,0 +1,26 @@
+name: Pull request policy
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  main-branch-policy:
+    name: Main branch policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require the release branch
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if [[ "$HEAD_REF" != "develop" || "$HEAD_REPOSITORY" != "$REPOSITORY" ]]; then
+            echo "Pull requests to main must come from this repository's develop branch."
+            exit 1
+          fi

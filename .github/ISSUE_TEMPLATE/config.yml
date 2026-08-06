@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/DAWNCR0W/TermGlide/security/advisories/new
+    about: Report security issues privately. Do not disclose vulnerabilities in a public issue.
+  - name: Questions and ideas
+    url: https://github.com/DAWNCR0W/TermGlide/discussions
+    about: Ask for help or discuss ideas that are not yet actionable bug or feature reports.
