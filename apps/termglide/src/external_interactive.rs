@@ -718,9 +718,10 @@ pub async fn run_external_interactive_terminal(
     // connection, and terminal state are cleaned up when the process is signalled.
     let signal_cancellation = cancellation.clone();
     let signal_task = tokio::spawn(async move {
-        if shutdown_signal().await.is_ok() {
-            signal_cancellation.cancel();
-        }
+        // Cancel on both a received signal and a monitoring failure (registration error or a
+        // closed signal stream) so browser, CDP, and terminal cleanup still runs.
+        let _ = shutdown_signal().await;
+        signal_cancellation.cancel();
     });
     let operation = {
         let stdout = io::stdout();
