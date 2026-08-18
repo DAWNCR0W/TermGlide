@@ -1330,6 +1330,7 @@ dependencies = [
  "tg-url",
  "thiserror 2.0.18",
  "toml",
+ "url",
 ]
 
 [[package]]

@@ -3,8 +3,10 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use tg_url::{BrowserUrl, SearchEngine};
 use thiserror::Error;
+use url::Url;
+
+use tg_url::{BrowserUrl, SearchEngine};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -121,6 +123,21 @@ impl Config {
                 "render.backend must be auto, cells, halfblock, quadrant, or braille".to_owned(),
             ));
         }
+        if !self.network.proxy.is_empty() {
+            let proxy = Url::parse(&self.network.proxy).map_err(|_| {
+                ConfigError::Validation("network.proxy must be a valid URL".to_owned())
+            })?;
+            if !matches!(proxy.scheme(), "http" | "https" | "socks4" | "socks5") {
+                return Err(ConfigError::Validation(
+                    "network.proxy scheme must be http, https, socks4, or socks5".to_owned(),
+                ));
+            }
+            if proxy.host_str().is_none() {
+                return Err(ConfigError::Validation(
+                    "network.proxy must include a host".to_owned(),
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -142,6 +159,17 @@ mod tests {
         assert!(toml::from_str::<Config>("version=1\nunknown=true").is_err());
         let mut config = Config::default();
         config.render.backend = "kitty".to_owned();
+        assert!(matches!(config.validate(), Err(ConfigError::Validation(_))));
+    }
+
+    #[test]
+    fn proxy_must_be_a_supported_url() {
+        let mut config = Config::default();
+        config.network.proxy = "http://127.0.0.1:8080".to_owned();
+        assert!(config.validate().is_ok());
+        config.network.proxy = "ftp://127.0.0.1:21".to_owned();
+        assert!(matches!(config.validate(), Err(ConfigError::Validation(_))));
+        config.network.proxy = "not a url".to_owned();
         assert!(matches!(config.validate(), Err(ConfigError::Validation(_))));
     }
 }
