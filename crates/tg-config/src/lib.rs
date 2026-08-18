@@ -137,6 +137,21 @@ impl Config {
                     "network.proxy must include a host".to_owned(),
                 ));
             }
+            if !proxy.username().is_empty() || proxy.password().is_some() {
+                return Err(ConfigError::Validation(
+                    "network.proxy must not include credentials".to_owned(),
+                ));
+            }
+            if !matches!(proxy.path(), "" | "/") {
+                return Err(ConfigError::Validation(
+                    "network.proxy must not include a path".to_owned(),
+                ));
+            }
+            if proxy.query().is_some() || proxy.fragment().is_some() {
+                return Err(ConfigError::Validation(
+                    "network.proxy must not include a query or fragment".to_owned(),
+                ));
+            }
         }
         Ok(())
     }
@@ -165,11 +180,29 @@ mod tests {
     #[test]
     fn proxy_must_be_a_supported_url() {
         let mut config = Config::default();
-        config.network.proxy = "http://127.0.0.1:8080".to_owned();
-        assert!(config.validate().is_ok());
-        config.network.proxy = "ftp://127.0.0.1:21".to_owned();
-        assert!(matches!(config.validate(), Err(ConfigError::Validation(_))));
-        config.network.proxy = "not a url".to_owned();
-        assert!(matches!(config.validate(), Err(ConfigError::Validation(_))));
+        for proxy in [
+            "http://127.0.0.1:8080",
+            "https://proxy.example.com:3128",
+            "socks4://127.0.0.1:1080",
+            "socks5://127.0.0.1:1080",
+        ] {
+            config.network.proxy = proxy.to_owned();
+            assert!(config.validate().is_ok(), "expected {proxy} to validate");
+        }
+        for proxy in [
+            "ftp://127.0.0.1:21",
+            "socks5:/path",
+            "http://user:pass@127.0.0.1:8080",
+            "http://127.0.0.1:8080/proxy",
+            "http://127.0.0.1:8080/?a=b",
+            "http://127.0.0.1:8080#fragment",
+            "not a url",
+        ] {
+            config.network.proxy = proxy.to_owned();
+            assert!(
+                matches!(config.validate(), Err(ConfigError::Validation(_))),
+                "expected {proxy} to be rejected"
+            );
+        }
     }
 }
