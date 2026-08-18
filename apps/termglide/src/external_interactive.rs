@@ -18,7 +18,7 @@ use tg_browser::{
 };
 use tg_core::{Cancellation, SystemClock};
 use tg_network::{CdpError, CdpLimits, CdpSession};
-use tg_platform::{PlatformError, TerminalGuard};
+use tg_platform::{PlatformError, TerminalGuard, shutdown_signal};
 use tg_terminal::{
     Backend, ExternalFrameDecodeLimits, ExternalFrameError, ExternalFrameOptions,
     ExternalFrameSequence, ExternalFrameSequenceLimits, ExternalFrameSequenceOutput, InputEvent,
@@ -714,6 +714,14 @@ pub async fn run_external_interactive_terminal(
     limits: ExternalInteractiveLimits,
 ) -> Result<ExternalInteractiveReport, ExternalInteractiveError> {
     let mut guard = TerminalGuard::enter_buttons_only()?;
+    // Watch for Ctrl-C / SIGTERM / SIGHUP and cancel the loop so the browser, CDP
+    // connection, and terminal state are cleaned up when the process is signalled.
+    let signal_cancellation = cancellation.clone();
+    let signal_task = tokio::spawn(async move {
+        if shutdown_signal().await.is_ok() {
+            signal_cancellation.cancel();
+        }
+    });
     let operation = {
         let stdout = io::stdout();
         let mut writer = stdout.lock();
@@ -726,6 +734,7 @@ pub async fn run_external_interactive_terminal(
         )
         .await
     };
+    signal_task.abort();
     let restore = guard.restore();
     preserve_terminal_restore(operation, restore)
 }
