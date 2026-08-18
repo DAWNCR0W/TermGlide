@@ -526,13 +526,32 @@ async fn serve_connection(mut stream: TcpStream) -> TestResult {
         response.len() <= MAX_RESPONSE_BYTES,
         "loopback response exceeded its output bound",
     )?;
-    timeout(HTTP_TIMEOUT, stream.write_all(response.as_bytes()))
-        .await
-        .map_err(|_| test_error("loopback response write timed out"))??;
-    timeout(HTTP_TIMEOUT, stream.shutdown())
-        .await
-        .map_err(|_| test_error("loopback response shutdown timed out"))??;
+    match timeout(HTTP_TIMEOUT, stream.write_all(response.as_bytes())).await {
+        Ok(Ok(())) => {}
+        // Chrome may close the connection as soon as it has what it needs; on Windows an
+        // in-flight write then fails with a connection reset, which is not a fixture failure.
+        Ok(Err(error)) if client_gone(&error) => return Ok(()),
+        Ok(Err(error)) => return Err(Box::new(error)),
+        Err(_) => {
+            return Err(test_error("loopback response write timed out"));
+        }
+    }
+    match timeout(HTTP_TIMEOUT, stream.shutdown()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) if client_gone(&error) => {}
+        Ok(Err(error)) => return Err(Box::new(error)),
+        Err(_) => {
+            return Err(test_error("loopback response shutdown timed out"));
+        }
+    }
     Ok(())
+}
+
+fn client_gone(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::ConnectionReset | io::ErrorKind::BrokenPipe
+    )
 }
 
 async fn read_request(stream: &mut TcpStream) -> TestResult<Option<String>> {
@@ -544,9 +563,14 @@ async fn read_request(stream: &mut TcpStream) -> TestResult<Option<String>> {
                 "loopback request exceeded its body/header bound",
             ));
         }
-        let read = timeout(HTTP_TIMEOUT, stream.read(&mut bytes[used..]))
+        let read = match timeout(HTTP_TIMEOUT, stream.read(&mut bytes[used..]))
             .await
-            .map_err(|_| test_error("loopback request read timed out"))??;
+            .map_err(|_| test_error("loopback request read timed out"))?
+        {
+            Ok(read) => read,
+            Err(error) if client_gone(&error) => return Ok(None),
+            Err(error) => return Err(Box::new(error)),
+        };
         if read == 0 {
             return Ok(None);
         }
