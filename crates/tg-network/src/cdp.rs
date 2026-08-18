@@ -2758,6 +2758,8 @@ mod tests {
         assert_eq!(error.code, -32000);
         assert_eq!(error.message, "boom");
         assert_eq!(error.request_id, 9);
+        assert_eq!(error.session_id.as_deref(), Some("s"));
+        assert_eq!(error.data, Some(json!({ "k": 1 })));
         let malformed = json!({ "code": -32000 });
         assert!(parse_protocol_error(9, None, &malformed).is_err());
         Ok(())
