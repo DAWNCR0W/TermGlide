@@ -649,10 +649,13 @@ async fn read_http_path(stream: &mut TcpStream) -> Result<Option<String>, Loopba
                 maximum: MAX_REQUEST_BYTES,
             });
         }
-        let read = stream
-            .read(&mut buffer[used..])
-            .await
-            .map_err(|source| loopback_io("read request", source))?;
+        let read = match stream.read(&mut buffer[used..]).await {
+            Ok(read) => read,
+            // Chrome may abort the request and reset the connection; on Windows that
+            // surfaces as a connection reset, which is not a fixture failure.
+            Err(source) if client_gone(&source) => return Ok(None),
+            Err(source) => return Err(loopback_io("read request", source)),
+        };
         if read == 0 {
             if used == 0 {
                 return Ok(None);
@@ -760,14 +763,26 @@ async fn write_http_response(
     stream: &mut TcpStream,
     response: &[u8],
 ) -> Result<(), LoopbackServerError> {
-    stream
-        .write_all(response)
-        .await
-        .map_err(|source| loopback_io("write response", source))?;
-    stream
-        .shutdown()
-        .await
-        .map_err(|source| loopback_io("close response", source))
+    match stream.write_all(response).await {
+        Ok(()) => {}
+        // Chrome may close the connection as soon as it has what it needs; on Windows an
+        // in-flight write then fails with a connection reset, which is not a fixture failure.
+        Err(source) if client_gone(&source) => return Ok(()),
+        Err(source) => return Err(loopback_io("write response", source)),
+    }
+    match stream.shutdown().await {
+        Ok(()) => {}
+        Err(source) if client_gone(&source) => {}
+        Err(source) => return Err(loopback_io("close response", source)),
+    }
+    Ok(())
+}
+
+fn client_gone(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::ConnectionReset | io::ErrorKind::BrokenPipe
+    )
 }
 
 fn loopback_io(operation: &'static str, source: io::Error) -> LoopbackServerError {
