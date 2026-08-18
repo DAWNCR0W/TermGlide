@@ -149,6 +149,7 @@ pub fn install_panic_restore_hook() {
 pub enum ShutdownReason {
     Interrupt,
     Terminate,
+    Hangup,
 }
 
 pub async fn shutdown_signal() -> io::Result<ShutdownReason> {
@@ -156,6 +157,7 @@ pub async fn shutdown_signal() -> io::Result<ShutdownReason> {
     {
         let mut terminate =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        let mut hangup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())?;
         tokio::select! {
             result = tokio::signal::ctrl_c() => {
                 result?;
@@ -167,6 +169,15 @@ pub async fn shutdown_signal() -> io::Result<ShutdownReason> {
                     None => Err(io::Error::new(
                         io::ErrorKind::BrokenPipe,
                         "termination signal stream closed",
+                    )),
+                }
+            }
+            value = hangup.recv() => {
+                match value {
+                    Some(()) => Ok(ShutdownReason::Hangup),
+                    None => Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        "hangup signal stream closed",
                     )),
                 }
             }
