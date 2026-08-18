@@ -904,7 +904,11 @@ fn wait_for_devtools_endpoint(
                 Ok(endpoint) => return Ok(endpoint),
                 Err(error) => malformed_active_port = Some(error),
             },
-            Err(source) if source.kind() == ErrorKind::NotFound => {}
+            // On Windows, Chrome can hold DevToolsActivePort open while writing; the read
+            // fails with ERROR_SHARING_VIOLATION (32) until the handle is released, so retry.
+            Err(source)
+                if source.kind() == ErrorKind::NotFound
+                    || (cfg!(windows) && source.raw_os_error() == Some(32)) => {}
             Err(source) => {
                 return Err(ExternalEngineError::Filesystem {
                     operation: "read DevToolsActivePort from",
