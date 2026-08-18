@@ -12,7 +12,7 @@ Protocol (CDP), and projects the rendered page into terminal cells. Version 1.0 
 one browser engine and one lifecycle: every session uses an isolated temporary browser profile
 that is removed when the session ends.
 
-![TermGlide rendering a graphical web page inside Terminal.app](docs/images/termglide-terminal-demo.png)
+![TermGlide rendering a graphical web page inside Terminal.app](docs/images/termglide_preview.png)
 
 _TermGlide 1.0 running in Terminal.app with the quadrant renderer and an isolated Chrome session._
 
@@ -43,6 +43,9 @@ cargo run --locked -p termglide -- doctor
 Use `--browser-executable /absolute/path/to/chrome` if automatic discovery cannot find the browser.
 
 ## Build and run
+
+Prebuilt binaries for Linux, macOS, and Windows are published with each GitHub release; download
+the archive for your platform, extract it, and add `termglide` to your `PATH`. Or build from source:
 
 ```console
 cargo build --locked --release -p termglide
