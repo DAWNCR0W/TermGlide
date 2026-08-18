@@ -785,13 +785,32 @@ async fn serve_connection(mut stream: TcpStream) -> TestResult {
         encoded.len() <= MAX_RESPONSE_BYTES,
         "loopback form response exceeded its output bound",
     )?;
-    timeout(HTTP_TIMEOUT, stream.write_all(encoded.as_bytes()))
-        .await
-        .map_err(|_| test_error("loopback form response write timed out"))??;
-    timeout(HTTP_TIMEOUT, stream.shutdown())
-        .await
-        .map_err(|_| test_error("loopback form response shutdown timed out"))??;
+    match timeout(HTTP_TIMEOUT, stream.write_all(encoded.as_bytes())).await {
+        Ok(Ok(())) => {}
+        // Chrome may close the connection as soon as it has what it needs; on Windows an
+        // in-flight write then fails with a connection reset, which is not a fixture failure.
+        Ok(Err(error)) if client_gone(&error) => return Ok(()),
+        Ok(Err(error)) => return Err(Box::new(error)),
+        Err(_) => {
+            return Err(test_error("loopback form response write timed out"));
+        }
+    }
+    match timeout(HTTP_TIMEOUT, stream.shutdown()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) if client_gone(&error) => {}
+        Ok(Err(error)) => return Err(Box::new(error)),
+        Err(_) => {
+            return Err(test_error("loopback form response shutdown timed out"));
+        }
+    }
     Ok(())
+}
+
+fn client_gone(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::ConnectionReset | io::ErrorKind::BrokenPipe
+    )
 }
 
 fn response_for_target(target: &str) -> HttpResponse {
@@ -839,7 +858,9 @@ async fn read_request(stream: &mut TcpStream) -> TestResult<Option<String>> {
         }
         let read = match timeout(REQUEST_HEADER_IDLE_TIMEOUT, stream.read(&mut bytes[used..])).await
         {
-            Ok(result) => result?,
+            Ok(Ok(read)) => read,
+            Ok(Err(error)) if client_gone(&error) => return Ok(None),
+            Ok(Err(error)) => return Err(Box::new(error)),
             Err(_) if used == 0 => return Ok(None),
             Err(_) => return Err(test_error("loopback form request headers stalled")),
         };
