@@ -1867,7 +1867,9 @@ mod tests {
 
     use super::{
         CdpAccessibilityTree, CdpAccessibilityValue, CdpBrowserVersion, CdpError, CdpLimits,
-        CdpSession, checked_dom_node_id, required_bounded_document_string, required_dom_node_id,
+        CdpSession, checked_dom_node_id, parse_protocol_error, required_bounded_document_string,
+        required_dom_node_id, select_first_page_target, validate_endpoint, validate_method,
+        validate_session_id, validate_text,
     };
 
     type TestResult<T = ()> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -2651,6 +2653,113 @@ mod tests {
         target.accessibility_enable().await?;
         assert_eq!(target.accessibility_tree().await?.nodes[1].role, "button");
         server.await??;
+        Ok(())
+    }
+
+    #[test]
+    fn validate_endpoint_accepts_loopback_only() -> TestResult {
+        let limits = CdpLimits::default();
+        assert!(validate_endpoint("ws://127.0.0.1:49213/devtools/browser/x", &limits).is_ok());
+        assert!(validate_endpoint("ws://localhost/devtools/browser/x", &limits).is_ok());
+        assert!(validate_endpoint("wss://[::1]/devtools/browser/x", &limits).is_ok());
+        assert!(validate_endpoint("ws://example.com/devtools", &limits).is_err());
+        assert!(validate_endpoint("ws://10.0.0.5:9222/devtools", &limits).is_err());
+        assert!(validate_endpoint("ws://user:pass@127.0.0.1/devtools", &limits).is_err());
+        assert!(validate_endpoint("http://127.0.0.1:9222/devtools", &limits).is_err());
+        assert!(validate_endpoint("", &limits).is_err());
+        assert!(validate_endpoint("ws://127.0.0.1/\0", &limits).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn validate_method_rejects_malformed_input() -> TestResult {
+        assert!(validate_method("Page.navigate", 1024).is_ok());
+        assert!(validate_method("", 1024).is_err());
+        assert!(validate_method("Page.navigate", 5).is_err());
+        assert!(validate_method("Page\nnavigate", 1024).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn validate_session_id_rejects_control_chars() -> TestResult {
+        assert!(validate_session_id("abc-123", 1024).is_ok());
+        assert!(validate_session_id("", 1024).is_err());
+        assert!(validate_session_id("abc\n", 1024).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn validate_text_enforces_bounds() -> TestResult {
+        assert!(validate_text("hello", 1024).is_ok());
+        assert!(validate_text("hello", 3).is_err());
+        assert!(validate_text("a\0b", 1024).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn select_first_page_target_prefers_blank_page() -> TestResult {
+        let result = json!({
+            "targetInfos": [
+                { "type": "page", "targetId": "p1", "url": "https://example.com" },
+                { "type": "page", "targetId": "p2", "url": "about:blank" },
+                { "type": "background_page", "targetId": "b1", "url": "about:blank" }
+            ]
+        });
+        let target_id = select_first_page_target(&result)?;
+        assert_eq!(target_id, "p2");
+        Ok(())
+    }
+
+    #[test]
+    fn select_first_page_target_falls_back_to_first_page() -> TestResult {
+        let result = json!({
+            "targetInfos": [
+                { "type": "service_worker", "targetId": "sw1", "url": "https://example.com" },
+                { "type": "page", "targetId": "p1", "url": "https://example.com" }
+            ]
+        });
+        let target_id = select_first_page_target(&result)?;
+        assert_eq!(target_id, "p1");
+        Ok(())
+    }
+
+    #[test]
+    fn select_first_page_target_rejects_no_page() -> TestResult {
+        let result = json!({ "targetInfos": [ { "type": "other", "targetId": "x", "url": "about:blank" } ] });
+        assert!(select_first_page_target(&result).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn checked_dom_node_id_rejects_nonpositive_and_overflow() -> TestResult {
+        let node_id = checked_dom_node_id(42)?;
+        assert_eq!(node_id, 42);
+        assert!(checked_dom_node_id(0).is_err());
+        assert!(checked_dom_node_id(u64::MAX).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn required_dom_node_id_requires_positive_root() -> TestResult {
+        let valid = json!({ "root": { "nodeId": 7 } });
+        let node_id = required_dom_node_id(&valid)?;
+        assert_eq!(node_id, 7);
+        let zero = json!({ "root": { "nodeId": 0 } });
+        assert!(required_dom_node_id(&zero).is_err());
+        let missing = json!({ "other": {} });
+        assert!(required_dom_node_id(&missing).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn parse_protocol_error_requires_code_and_message() -> TestResult {
+        let value = json!({ "code": -32000, "message": "boom", "data": { "k": 1 } });
+        let error = parse_protocol_error(9, Some("s".to_owned()), &value)?;
+        assert_eq!(error.code, -32000);
+        assert_eq!(error.message, "boom");
+        assert_eq!(error.request_id, 9);
+        let malformed = json!({ "code": -32000 });
+        assert!(parse_protocol_error(9, None, &malformed).is_err());
         Ok(())
     }
 }
