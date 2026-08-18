@@ -50,17 +50,21 @@ jobs:
           set -e
           archive="termglide-${{ matrix.dist }}.${{ matrix.ext }}"
           tar -czf "$archive" -C target/release termglide
-          sha256sum "$archive" > SHA256SUMS
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            shasum -a 256 "$archive" > "SHA256SUMS-${{ matrix.dist }}"
+          else
+            sha256sum "$archive" > "SHA256SUMS-${{ matrix.dist }}"
+          fi
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $archive = "termglide-${{ matrix.dist }}.${{ matrix.ext }}"
           Compress-Archive -Path "target/release/termglide.exe" -DestinationPath $archive
-          (Get-FileHash -Algorithm SHA256 $archive).Hash + "  " + $archive | Out-File -Encoding ascii SHA256SUMS
+          (Get-FileHash -Algorithm SHA256 $archive).Hash + "  " + $archive | Out-File -Encoding ascii "SHA256SUMS-${{ matrix.dist }}"
       - name: Attach binaries to release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             termglide-${{ matrix.dist }}.${{ matrix.ext }}
-            SHA256SUMS
+            SHA256SUMS-${{ matrix.dist }}
