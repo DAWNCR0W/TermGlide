@@ -1274,7 +1274,11 @@ async fn read_http_header(stream: &mut TcpStream) -> TestResult<Option<String>> 
         )
         .await
         {
-            Ok(result) => result.map_err(box_error)?,
+            Ok(Ok(read)) => read,
+            // Chrome may abort the request and reset the connection; on Windows that
+            // surfaces as a connection reset, which is not a fixture failure.
+            Ok(Err(error)) if client_gone(&error) => return Ok(None),
+            Ok(Err(error)) => return Err(box_error(error)),
             Err(_) if used == 0 => return Ok(None),
             Err(_) => {
                 return Err(test_error(
@@ -1399,8 +1403,26 @@ fn http_response(status: &str, body: &str) -> TestResult<Vec<u8>> {
 }
 
 async fn write_http_response(stream: &mut TcpStream, response: &[u8]) -> TestResult {
-    stream.write_all(response).await.map_err(box_error)?;
-    stream.shutdown().await.map_err(box_error)
+    match stream.write_all(response).await {
+        Ok(()) => {}
+        // Chrome may close the connection as soon as it has what it needs; on Windows an
+        // in-flight write then fails with a connection reset, which is not a fixture failure.
+        Err(error) if client_gone(&error) => return Ok(()),
+        Err(error) => return Err(box_error(error)),
+    }
+    match stream.shutdown().await {
+        Ok(()) => {}
+        Err(error) if client_gone(&error) => {}
+        Err(error) => return Err(box_error(error)),
+    }
+    Ok(())
+}
+
+fn client_gone(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::ConnectionReset | io::ErrorKind::BrokenPipe
+    )
 }
 
 fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {

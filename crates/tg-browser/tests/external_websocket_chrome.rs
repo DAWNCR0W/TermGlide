@@ -485,7 +485,14 @@ async fn read_http_request(
         let read = tokio::select! {
             _ = cancellation.cancelled() => return Err(test_error("loopback HTTP read cancelled")),
             result = timeout(FIXTURE_TIMEOUT, stream.read(&mut bytes[used..])) => {
-                result.map_err(|_| test_error("loopback HTTP read timed out"))??
+                match result {
+                    Ok(Ok(read)) => read,
+                    // Chrome may abort the request and reset the connection; on Windows that
+                    // surfaces as a connection reset, which is not a fixture failure.
+                    Ok(Err(error)) if client_gone(&error) => return Ok(None),
+                    Ok(Err(error)) => return Err(box_error(error)),
+                    Err(_) => return Err(test_error("loopback HTTP read timed out")),
+                }
             }
         };
         if read == 0 {
@@ -506,8 +513,14 @@ async fn write_http(
     tokio::select! {
         _ = cancellation.cancelled() => Err(test_error("loopback HTTP write cancelled")),
         result = timeout(FIXTURE_TIMEOUT, stream.write_all(response)) => {
-            result.map_err(|_| test_error("loopback HTTP write timed out"))??;
-            Ok(())
+            match result {
+                Ok(Ok(())) => Ok(()),
+                // Chrome may close the connection as soon as it has what it needs; on Windows an
+                // in-flight write then fails with a connection reset, which is not a fixture failure.
+                Ok(Err(error)) if client_gone(&error) => Ok(()),
+                Ok(Err(error)) => Err(box_error(error)),
+                Err(_) => Err(test_error("loopback HTTP write timed out")),
+            }
         }
     }
 }
@@ -516,10 +529,21 @@ async fn shutdown_http(stream: &mut TcpStream, cancellation: &Cancellation) -> T
     tokio::select! {
         _ = cancellation.cancelled() => Err(test_error("loopback HTTP shutdown cancelled")),
         result = timeout(FIXTURE_TIMEOUT, stream.shutdown()) => {
-            result.map_err(|_| test_error("loopback HTTP shutdown timed out"))??;
-            Ok(())
+            match result {
+                Ok(Ok(())) => Ok(()),
+                Ok(Err(error)) if client_gone(&error) => Ok(()),
+                Ok(Err(error)) => Err(box_error(error)),
+                Err(_) => Err(test_error("loopback HTTP shutdown timed out")),
+            }
         }
     }
+}
+
+fn client_gone(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::ConnectionReset | io::ErrorKind::BrokenPipe
+    )
 }
 
 fn header_end(bytes: &[u8]) -> Option<usize> {
