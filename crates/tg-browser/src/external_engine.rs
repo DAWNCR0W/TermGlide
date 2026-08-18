@@ -471,7 +471,9 @@ impl ExternalEngineProcess {
 
 impl Drop for ExternalEngineProcess {
     fn drop(&mut self) {
-        let _ = self.shutdown();
+        if let Err(error) = self.shutdown() {
+            tracing::warn!(%error, "failed to fully shut down the external browser engine on drop");
+        }
     }
 }
 
